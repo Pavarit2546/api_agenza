@@ -6,20 +6,23 @@ from volcengine.auth.SignParam import SignParam
 from volcengine.Credentials import Credentials
 from collections import OrderedDict
 
-def list_user_admin_service(query,creds, version, host):
+def list_user_service(query,creds, version, host):
     method = "POST"
-    action = "ListUserForAdmin" # [cite: 903]
-    service = "iam" # [cite: 344]
-    url_path = '/'
+    action = "ListUser"
+    service = "iam"
+    url_path = '/api/iam'
+    account_id = 'd3af13mdeu7s72uer79g'
+    # 1. เตรียม Body Data 
+    data = {
+        "Query": query, # support username, displayname query
+        "Top": 
+        {
+            "DestService": service,
+            "DestAction": action
+        },
+    }
 
-    # 1. เตรียม Body Data (ส่งเฉพาะฟิลด์บังคับหรือค่าว่าง)
-    # ในเอกสารระบุว่า Top เป็น true (ต้องส่ง) [cite: 907]
-    data = OrderedDict([
-        ("Query", query),
-        ("Top", {}), # ส่ง Object ว่างตามที่เคยทำ [cite: 907]
-    ])
-
-    json_body = json.dumps(data, separators=(',', ':'))
+    json_body = json.dumps(data)
     body_hash = hashlib.sha256(json_body.encode('utf-8')).hexdigest()
 
     # 2. ลงลายเซ็น V4
@@ -29,38 +32,54 @@ def list_user_admin_service(query,creds, version, host):
     param.method = method
     param.host = host
     param.body = body_hash
-    param.query = OrderedDict([('Action', action), ('Version', version)])
-    
-    # รวม Header 'service' เข้าไปใน Signature List
+    query = OrderedDict()
+    query['Action'] = action
+    query['Version'] = version
+    param.query = query
+
     header = OrderedDict()
     header['Host'] = host
-    header['service'] = service 
+    header['service'] = service
     param.header_list = header
 
     cren = Credentials(creds['AK'], creds['SK'], service, creds['REGION'])
     resulturl = sign.sign_url(param, cren)
+    
+    # 3. สร้าง URL สุดท้าย
     url = f"https://{host}{url_path}?{resulturl}"
-    print("URL:", url)
+    print("Requesting ListUser URL:", url)
+    print("Body Data:", json_body)
 
     try:
         headers = {
             'Content-Type': 'application/json',
-            'service': 'iam',                    # 
-            'X-Top-Dest-Service': 'iam',         # ระบุบริการปลายทาง 
-            'X-Top-Dest-Action': 'ListUserForAdmin', # ระบุ Action ปลายทาง 
-            'X-Top-Region': 'cn-north-1'         # ระบุ Region ตามเอกสาร 
-        }
-        
+            'service': service,
+            'X-Top-Dest-Service': service,
+            'X-Top-Dest-Action': action,
+            'X-Top-Tenant-Id': account_id        }
         resp = requests.request(method, url=url, headers=headers, data=json_body, verify=True)
         
-        print(f"ListUser Response Status: {resp.status_code}")
+        # แสดงผลลัพธ์เพื่อ Debug
+        print(f"Response Status: {resp.status_code}")
+        print(f"Response Text: {resp.text}")
         
-        if resp.status_code != 200:
-            print(f"ListUser API Error Detail: {resp.text}")
-            return None
+        response_data = resp.json()
 
-        return resp.json().get("Result") # คืนค่า Items และ Total 
-        
+        if resp.status_code != 200:
+            error_status=resp.status_code
+            error_info = response_data.get("ResponseMetadata", {}).get("Error", {})
+            return {
+                "error": True,
+                "status": error_status,
+                "message": error_info.get("Message", "No message provided")
+            }
+
+        # ถ้าสำเร็จ ส่งเฉพาะ Result กลับไป
+        result = response_data.get("Result")
+        if result is not None:
+            result["error"] = False
+        return result
+
     except Exception as e:
-        print(f"ListUser Request failed: {e}")
-        return None
+        print(f"ListAction Request failed: {e}")
+        return {"error": True, "status": "RequestFailed", "message": str(e)}

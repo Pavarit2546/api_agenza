@@ -6,27 +6,33 @@ from volcengine.auth.SignParam import SignParam
 from volcengine.Credentials import Credentials
 from collections import OrderedDict
 
-def create_user_service(username, password, display_name, email, rolename, creds, version, host):
+def update_user_service(creds, version, host, user_id, display_name, email, 
+                        mobile, icon, description, org_ids, 
+                        role_name, user_group_ids, username):
     method = "POST"
-    action = "CreateUser"
+    action = "UpdateUser"
     service = "iam"
-    url_path = '/api/iam' 
+    url_path = '/api/iam'
 
-    # 1. เตรียม Body Data
-    data = {
-        "UserName": username,
-        "Password": password,
-        "DisplayName": display_name,
-        "RoleName": rolename,
-        "Email": email,
-        "Top": {
+    # 1. เตรียม Body Data (ใช้ค่าตามที่ส่งมาจาก Controller)
+    data = OrderedDict([
+        ("ID", str(user_id)),
+        ("DisplayName", str(display_name)),
+        ("Email", str(email)),
+        ("Mobile", str(mobile)),
+        ("Icon", str(icon)),
+        ("Description", str(description)),
+        ("OrgIDs", org_ids if org_ids else []),
+        ("RoleName", str(role_name)),
+        ("UserGroupIDs", user_group_ids if user_group_ids else []),
+        ("UserName", str(username)),
+        ("Top", {
             "DestService": service,
             "DestAction": action
-        }
-    }
-    
-    # ทำ Compact JSON เพื่อความแม่นยำของ Signature
-    json_body = json.dumps(data)
+        })
+    ])
+
+    json_body = json.dumps(data, separators=(',', ':'))
     body_hash = hashlib.sha256(json_body.encode('utf-8')).hexdigest()
 
     # 2. ลงลายเซ็น V4
@@ -68,28 +74,17 @@ def create_user_service(username, password, display_name, email, rolename, creds
         }
         
         resp = requests.request(method, url=url, headers=headers, data=json_body, verify=True)
-        
-        # แสดงผลลัพธ์เพื่อ Debug
-        print(f"Response Status: {resp.status_code}")
-        print(f"Response Text: {resp.text}")
-
         response_data = resp.json()
 
         if resp.status_code != 200:
-            error_status=resp.status_code
             error_info = response_data.get("ResponseMetadata", {}).get("Error", {})
             return {
                 "error": True,
-                "status": error_status,
-                "message": error_info.get("Message", "No message provided")
+                "status": resp.status_code,
+                "message": error_info.get("Message", "Update failed")
             }
 
-        # ถ้าสำเร็จ ส่งเฉพาะ Result กลับไป
-        result = response_data.get("Result")
-        if result is not None:
-            result["error"] = False
-        return result
+        return {"error": False, "status": 200, "data": response_data.get("Result")}
 
     except Exception as e:
-        print(f"ListAction Request failed: {e}")
-        return {"error": True, "status": "RequestFailed", "message": str(e)}
+        return {"error": True, "status": 500, "message": str(e)}

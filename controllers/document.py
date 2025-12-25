@@ -1,15 +1,18 @@
 # controllers/document.py
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app , Response
 import tempfile
 import os
 
 # Import utility functions จาก api/
-from api.documents.uploadRaw import upload_raw_file
-from api.documents.createDocument import create_document
-from api.documents.getDocument import get_document
-from api.documents.deleteDocument import delete_document
-from api.documents.listDocument import list_document
-from api.documents.updateDocument import update_document
+from api.documents.up.uploadRaw import upload_raw_file
+from api.documents.app_service.createDocument import create_document
+from api.documents.app_service.getDocument import get_document
+from api.documents.app_service.deleteDocument import delete_document
+from api.documents.app_service.listDocument import list_document
+from api.documents.app_service.updateDocument import update_document
+from api.documents.up.getDownloadKey import get_download_key
+from api.documents.up.downloadFile import download_file
+
 
 # สร้าง Blueprint สำหรับ Document Group
 document_bp = Blueprint('document', __name__)
@@ -25,7 +28,42 @@ def get_config():
         'HOST': current_app.config['CREDENTIALS']['HOST']
     }
 
-# [POST] /api/document/upload-and-create
+# [POST] /api/document/upload 
+# สำหรับ Upload file เพื่อเอาแค่ obs_url (ใช้กรณีต้องการ path ไปทำอย่างอื่น)
+@document_bp.route('/upload', methods=['POST'])
+def upload_only():
+    config = get_config()
+    
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
+    
+    file = request.files['file']
+    filename = file.filename
+    temp_path = os.path.join(tempfile.gettempdir(), filename) 
+    
+    try:
+        file.save(temp_path)
+
+        obs_url = upload_raw_file(
+            file_path=temp_path,
+            client_id=config['CLIENT_ID'],
+            creds=config['CREDENTIALS'],
+            version=config['UP_VERSION'],
+            host=config['HOST'],
+            workspace_id=None, # ไม่ใส่เพื่อเอา path ทั่วไป
+            is_proxy=True      # ใช้ path /api/proxy/up
+        )
+        return jsonify({"status": "success", "obs_url": obs_url, "filename": filename}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+    
+    
+    
+# [POST] /api/document/upload-and-create 
+#สำหรับ Upload และผูกเข้า Dataset ทันที (ต้องส่ง workspace_id, dataset_id มาด้วย)
 @document_bp.route('/upload-and-create', methods=['POST'])
 def upload_and_create():
     
@@ -91,6 +129,55 @@ def upload_and_create():
         "document_id": doc_id,
         "filename": filename
     }), 200
+    
+
+@document_bp.route('/download-document', methods=['POST'])
+def download_document():
+    config = get_config()
+    data = request.get_json()
+    
+    obs_url = data.get('obs_url') # รับ Path ไฟล์จาก Client เช่น upload/full/...
+    filename = data.get('filename', 'downloaded_file.bin')
+
+    if not obs_url:
+        return jsonify({"error": "Missing obs_url"}), 400
+
+    # 1. ขอ Download Key (ต้องทำภายใน 10 วินาที)
+    download_key = get_download_key(
+        file_path_obs=obs_url,
+        client_id=config['CLIENT_ID'],
+        creds=config['CREDENTIALS'],
+        version=config['UP_VERSION'],
+        host=config['HOST']
+    )
+
+    if not download_key:
+        return jsonify({"error": "Failed to get download key"}), 500
+
+    # 2. ดาวน์โหลดไฟล์จริง
+    download_resp = download_file(
+        file_path_obs=obs_url,
+        download_key=download_key,
+        creds=config['CREDENTIALS'],
+        version=config['UP_VERSION'], # หรือเวอร์ชันที่เกี่ยวข้อง
+        host=config['HOST']
+    )
+
+    if not download_resp:
+        return jsonify({"error": "Download failed"}), 500
+
+
+    def generate():
+        for chunk in download_resp.iter_content(chunk_size=8192):
+            yield chunk
+
+    return Response(
+        generate(),
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Content-Type": download_resp.headers.get('Content-Type', 'application/octet-stream')
+        }
+    )
 
 # [POST] /api/document/get
 @document_bp.route('/get', methods=['POST'])

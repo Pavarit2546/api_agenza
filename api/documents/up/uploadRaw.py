@@ -6,7 +6,7 @@ from volcengine.auth.SignParam import SignParam
 from volcengine.Credentials import Credentials
 from collections import OrderedDict
 
-def upload_raw_file(file_path, workspace_id, client_id, creds, version, host) -> str:
+def upload_raw_file(file_path, workspace_id, client_id, creds, version, host, is_proxy=False) -> str:
     
     method = "POST"
     action = "UploadRaw"
@@ -22,14 +22,22 @@ def upload_raw_file(file_path, workspace_id, client_id, creds, version, host) ->
     sha256_hash = hashlib.sha256(file_data).hexdigest()
     
     # 2. เตรียม URL Path
-    url_path = f'/up/'
+    url_path = '/api/proxy/up' if is_proxy else '/up/'
 
     # 3. เตรียม Query Parameters
     query = OrderedDict()
     query['Action'] = action
     query['Version'] = version
     query['Id'] = client_id
-    query['X-Account-Id'] = workspace_id
+    
+    if workspace_id:
+        query['X-Account-Id'] = workspace_id
+    
+    # ถ้าเป็นแบบ Proxy ตามที่คุณเจอ มักจะมี Expire พ่วงมาด้วย
+    if is_proxy:
+        query['Region'] = creds['REGION']
+        query['Expire'] = '720h'
+
 
     # 4. เตรียม Header
     headers = {
@@ -66,7 +74,7 @@ def upload_raw_file(file_path, workspace_id, client_id, creds, version, host) ->
             headers=headers, 
             data=file_data,
             verify=True,
-            timeout=30
+            timeout=60
         )
         response.raise_for_status()
         response_json = response.json()

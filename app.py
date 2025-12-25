@@ -25,9 +25,12 @@ app.config['CREDENTIALS'] = {
 }
 app.config['UP_VERSION'] = os.getenv('UP_VERSION', '2022-01-01')
 app.config['APP_VERSION'] = os.getenv('APP_VERSION', '2023-08-01')
+app.config['IAM_VERSION'] = os.getenv('IAM_VERSION', '2024-12-25')
 app.config['CLIENT_ID'] = os.getenv('CLIENT_ID')
 app.config['ARK_API_KEY'] = os.getenv('ARK_API_KEY')
 app.config['ARK_HOST'] = os.getenv('ARK_HOST')
+app.config['USERNAME'] = os.getenv('USERNAME')
+app.config['PASSWORD'] = os.getenv('PASSWORD')
 
 
 # Document APIs /api/document

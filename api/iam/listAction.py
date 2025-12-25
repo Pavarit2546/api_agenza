@@ -1,3 +1,4 @@
+# api/iam/listAction.py
 import json
 import requests
 import hashlib
@@ -6,30 +7,27 @@ from volcengine.auth.SignParam import SignParam
 from volcengine.Credentials import Credentials
 from collections import OrderedDict
 
-def create_user_service(username, password, display_name, email, rolename, creds, version, host):
-    method = "POST"
-    action = "CreateUser"
-    service = "iam"
-    url_path = '/api/iam' 
 
-    # 1. เตรียม Body Data
+def list_action_service(creds, version, host, page_number=1, page_size=10):
+    method = "POST"
+    action = "ListAction"
+    service = "iam"
+    url_path = '/api/iam'
+
+    # เตรียม Body Data
     data = {
-        "UserName": username,
-        "Password": password,
-        "DisplayName": display_name,
-        "RoleName": rolename,
-        "Email": email,
+        "PageNumber": page_number,
+        "PageSize": page_size,
         "Top": {
             "DestService": service,
             "DestAction": action
-        }
+        }          
     }
-    
-    # ทำ Compact JSON เพื่อความแม่นยำของ Signature
+
     json_body = json.dumps(data)
     body_hash = hashlib.sha256(json_body.encode('utf-8')).hexdigest()
 
-    # 2. ลงลายเซ็น V4
+    # ลงลายเซ็น V4
     sign = SignerV4()
     param = SignParam()
     param.path = url_path
@@ -37,7 +35,6 @@ def create_user_service(username, password, display_name, email, rolename, creds
     param.host = host
     param.body = body_hash
     
-    # เตรียม Query Parameters
     query = OrderedDict()
     query['Action'] = action
     query['Version'] = version
@@ -54,8 +51,7 @@ def create_user_service(username, password, display_name, email, rolename, creds
     
     # 3. สร้าง URL สุดท้าย
     url = f"https://{host}{url_path}?{resulturl}"
-    
-    print("Requesting CreateUser URL:", url)
+    print("Requesting ListAction URL:", url)
     print("Body Data:", json_body)
 
     try:
@@ -72,7 +68,7 @@ def create_user_service(username, password, display_name, email, rolename, creds
         # แสดงผลลัพธ์เพื่อ Debug
         print(f"Response Status: {resp.status_code}")
         print(f"Response Text: {resp.text}")
-
+        
         response_data = resp.json()
 
         if resp.status_code != 200:

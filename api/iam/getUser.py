@@ -6,26 +6,22 @@ from volcengine.auth.SignParam import SignParam
 from volcengine.Credentials import Credentials
 from collections import OrderedDict
 
-def create_user_service(username, password, display_name, email, rolename, creds, version, host):
+def get_user_service(creds, version, host, account_id, name):
     method = "POST"
-    action = "CreateUser"
+    action = "GetUser"
     service = "iam"
-    url_path = '/api/iam' 
+    url_path = '/api/iam'
 
     # 1. เตรียม Body Data
     data = {
-        "UserName": username,
-        "Password": password,
-        "DisplayName": display_name,
-        "RoleName": rolename,
-        "Email": email,
+        "ID": account_id,
+        "Name": name,
         "Top": {
             "DestService": service,
             "DestAction": action
         }
     }
-    
-    # ทำ Compact JSON เพื่อความแม่นยำของ Signature
+
     json_body = json.dumps(data)
     body_hash = hashlib.sha256(json_body.encode('utf-8')).hexdigest()
 
@@ -72,24 +68,18 @@ def create_user_service(username, password, display_name, email, rolename, creds
         # แสดงผลลัพธ์เพื่อ Debug
         print(f"Response Status: {resp.status_code}")
         print(f"Response Text: {resp.text}")
-
+        
         response_data = resp.json()
 
         if resp.status_code != 200:
-            error_status=resp.status_code
             error_info = response_data.get("ResponseMetadata", {}).get("Error", {})
             return {
                 "error": True,
-                "status": error_status,
-                "message": error_info.get("Message", "No message provided")
+                "status": resp.status_code,
+                "message": error_info.get("Message", "Delete failed")
             }
 
-        # ถ้าสำเร็จ ส่งเฉพาะ Result กลับไป
-        result = response_data.get("Result")
-        if result is not None:
-            result["error"] = False
-        return result
+        return {"error": False, "status": 200, "message": response_data.get("Result")}
 
     except Exception as e:
-        print(f"ListAction Request failed: {e}")
-        return {"error": True, "status": "RequestFailed", "message": str(e)}
+        return {"error": True, "status": 500, "message": str(e)}
