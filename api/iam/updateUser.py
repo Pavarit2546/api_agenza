@@ -70,12 +70,12 @@ def update_user_service(creds, version, host, user_id, display_name, email,
             'service': service,
             'X-Top-Dest-Service': service,
             'X-Top-Dest-Action': action,
-            'X-Top-Tenant-Id': 'd354uijg9jlc72tdg5n0'
         }
         
         resp = requests.request(method, url=url, headers=headers, data=json_body, verify=True)
         response_data = resp.json()
-
+        print("response_data:", response_data)
+    
         if resp.status_code != 200:
             error_info = response_data.get("ResponseMetadata", {}).get("Error", {})
             return {

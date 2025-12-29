@@ -88,7 +88,7 @@ def upload_raw_file(file_path, workspace_id, client_id, creds, version, host, is
         return None
 
     if response_json.get("ResponseMetadata", {}).get("Error") is None:
-        obs_url = response_json.get("Result", {}).get("Path")
+        obs_url = response_json.get("Result", {})
         return obs_url
     else:
         print(f"Upload Raw Failed. Status Code: {response.status_code}")

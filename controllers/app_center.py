@@ -2,6 +2,7 @@
 from flask import Blueprint, jsonify, current_app, request, send_file, Response, stream_with_context, json
 import io
 import base64
+import time
 # Import utility functions
 from api.app_service.login_service.login_service import login_service
 from api.app_service.listApp import list_app_center
@@ -22,6 +23,9 @@ from api.app_service.chatQueryDebug import chat_query_debug_service
 from api.app_service.chatQueryHomeBot import chat_query_homebot_service
 from api.app_service.chatQuery import chat_query_service
 from api.app_service.createConversation import create_conversation_service
+from api.app_service.listPublishedWorkflow import list_published_workflows_service
+from api.app_service.getMessageInfoDebug import get_message_info_debug
+
 
 
 
@@ -106,36 +110,67 @@ def publish_app():
     config = get_config()
     req_data = request.get_json()
 
+    # 1. รับค่าพื้นฐาน
     workspace_id = req_data.get('workspace_id')
     app_id = req_data.get('app_id')
-    workflow_id = req_data.get('workflow_id', '')
+    workflow_id = req_data.get('workflow_id')
+    workflow_version = req_data.get('workflow_version')
+    workflow_publish_id = req_data.get('workflow_publish_id', '')
 
-    if not app_id or not workspace_id:
+    # 2. รับค่า Model Config (ถ้าไม่มีให้ใส่ค่า Default ตามที่คุณต้องการ)
+    preprompt = req_data.get('preprompt', "You are a helpful assistant.")
+    temperature = req_data.get('temperature', 0.7)
+    topP = req_data.get('topP', 0.9)
+    maxtokens = req_data.get('maxtokens', 1000)
+
+    # 3. รับค่า List IDs ต่างๆ
+    tool_ids = req_data.get('tool_ids', [])
+    workflow_ids = req_data.get('workflow_ids', [])
+    knowledge_ids = req_data.get('knowledge_ids', [])
+    qa_dataset_ids = req_data.get('qa_dataset_ids', [])
+    database_ids = req_data.get('database_ids', [])
+
+    # ตรวจสอบฟิลด์ที่จำเป็น
+    if not app_id and not workspace_id:
         return jsonify({
             "status": "error",
             "message": "AppID and WorkspaceID are required"
         }), 400
 
+    # 4. เรียกใช้ Service โดยส่งพารามิเตอร์ทั้งหมดตามที่ฟังก์ชันต้องการ
     result = publish_app_service(
         creds=config['CREDENTIALS'],
         version=config['APP_VERSION'],
         host=config['HOST'],
+        preprompt=preprompt,
+        temperature=temperature,
+        topP=topP,
+        maxtokens=maxtokens,
+        tool_ids=tool_ids,
+        workflow_ids=workflow_ids,
+        workflow_version=workflow_version,
+        knowledge_ids=knowledge_ids,
+        qa_dataset_ids=qa_dataset_ids,
+        database_ids=database_ids,
         workspace_id=workspace_id,
         app_id=app_id,
-        workflow_id=workflow_id
+        workflow_id=workflow_id,
+        workflow_publish_id=workflow_publish_id
     )
 
+    # 5. จัดการผลลัพธ์
     if result.get("error"):
         return jsonify({
             "status": "error",
             "message": result.get("message"),
+            "data": result.get("data"),
             "code": result.get("status")
-        }), result.get("status")
+        }), result.get("status", 500)
 
-    # กรณีสำเร็จ (ส่ง 200 ตามที่คุณต้องการ)
     return jsonify({
         "status": "success",
-        "message": result.get("message")
+        "message": result.get("message", "App published successfully"),
+        "data": result.get("data") # ส่งผลลัพธ์การ publish กลับไปด้วยถ้ามี
     }), 200
     
 
@@ -240,6 +275,7 @@ def update_app():
     if result:
         return jsonify({"status": "success", "message": f"App {app_id} updated"}), 200
     return jsonify({"error": "Update failed"}), 500
+
 
 # [POST] api/app/copy
 @app_bp.route('/copy', methods=['POST'])
@@ -562,22 +598,86 @@ def chat_query_debug():
     config = get_config()
     req_data = request.get_json()
 
+    # --- รับค่าจาก Request (Postman JSON) ---
+    workflow_id = req_data.get("workflow_id")
+    workflow_publish_id = req_data.get("workflow_publish_id")
+    query_text = req_data.get("query", "")
+    workspace_id = req_data.get("workspace_id", "")
+    app_id = req_data.get("app_id", "")
+    preprompt = req_data.get("preprompt", "")
+    
+    temperature = req_data.get("temperature", 0.7)
+    topP = req_data.get("topP", 0.95)
+    maxtokens = req_data.get("maxtokens", 2000)
+    
+
+    # รับค่า List ต่างๆ (ถ้าไม่ส่งมาให้เป็น List ว่าง [])
+    tool_ids = req_data.get("tool_ids", [])
+    workflow_ids = req_data.get("workflow_ids", [])
+    knowledge_ids = req_data.get("knowledge_ids", [])
+    qa_dataset_ids = req_data.get("qa_dataset_ids", [])
+    database_ids = req_data.get("database_ids", [])
+    trigger_configs = req_data.get("trigger_configs", [])
+
+    # ข้อมูลไฟล์ (ถ้ามี)
+    obs_url = req_data.get("obs_url")
+    file_name = req_data.get("file_name", "file")
+    size_file = req_data.get("size_file", 0)
+
+    def generate():
+        result = chat_query_debug_service(
+                creds=config['CREDENTIALS'],
+                version=config['APP_VERSION'],
+                host=config['HOST'],
+                workspace_id=workspace_id,
+                temperature=temperature,
+                topP=topP,
+                maxtokens=maxtokens,
+                workflow_publish_id=workflow_publish_id,
+                app_id=app_id,
+                preprompt=preprompt,
+                query_text=query_text,
+                file_name=file_name,
+                workflow_id=workflow_id,
+                obs_url=obs_url,
+                size_file=size_file,
+                tool_ids=tool_ids,
+                workflow_ids=workflow_ids,
+                trigger_configs=trigger_configs,
+                knowledge_ids=knowledge_ids,
+                qa_dataset_ids=qa_dataset_ids,
+                database_ids=database_ids,
+                # mode=mode
+            )
+            # วนลูปอ่าน JSON ที่ yield ออกมาจาก service
+        for data_json in result:
+            # 1. พิมพ์ ID ลง Console ฝั่ง Server เพื่อดูว่ามาหรือยัง
+            if "id" in data_json:
+                print(f"✅ FOUND MESSAGE ID: {data_json['id']}", flush=True)
+            
+            # 2. ส่งข้อมูลออกไปให้หน้าเว็บ (Frontend)
+            yield f"data: {json.dumps(data_json)}\n\n"
+
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+# [POST] api/app/get-message-debug
+@app_bp.route('/get-message-debug', methods=['POST'])
+def get_message_debug():
+    config = get_config()
+    req_data = request.get_json()
+
     workspace_id = req_data.get('workspace_id')
-    app_id = req_data.get('app_id')
-    query_text = req_data.get('query')
-    # mode= req_data.get('mode', 'blocking')  # 'blocking' หรือ 'streaming'
+    message_id = req_data.get('message_id')
 
-    if not all([workspace_id, app_id, query_text]):
-        return jsonify({"status": "error", "message": "Missing required fields"}), 400
+    if not workspace_id or not message_id:
+        return jsonify({"status": "error", "message": "Missing WorkspaceID or AppID"}), 400
 
-    result = chat_query_debug_service(
+    result = get_message_info_debug(
         creds=config['CREDENTIALS'],
         version=config['APP_VERSION'],
         host=config['HOST'],
         workspace_id=workspace_id,
-        app_id=app_id,
-        query_text=query_text,
-        # mode=mode
+        message_id=message_id,
     )
 
     if result.get("error"):
@@ -588,10 +688,8 @@ def chat_query_debug():
 
     return jsonify({
         "status": "success",
-        "answer": result.get("data")
+        "Answer": result.get("message")
     }), 200
-    
-    
 
 # [POST] api/app/chat-query-homebot
 @app_bp.route('/chat-query-homebot', methods=['POST'])
@@ -630,6 +728,7 @@ def chat_query_homebot():
 @app_bp.route('/chat-query', methods=['POST'])
 def chat_query():
     config = get_config()
+    creds = config['CREDENTIALS']
     req_data = request.get_json()
     
     # conversation_id = req_data.get('conversation_id', '')
@@ -639,22 +738,27 @@ def chat_query():
     conversation_id = req_data.get('conversation_id').strip().replace(" ", "")
     obs_url = req_data.get('obs_url')
 
-    result = chat_query_service(
-        app_conversation_id=app_conversation_id,
-        app_key=app_key,
-        query_text=query_text,
-        conversation_id=conversation_id,
-        obs_url=obs_url,
-        creds=config['CREDENTIALS'],
-    )
+    def generate(creds_data, app_conv_id, q_text, a_key, conv_id, o_url):
+        # เรียกใช้ Service โดยส่งค่าที่เตรียมไว้แล้วเข้าไป
+        result = chat_query_service(
+            app_key=a_key,
+            query_text=q_text,
+            app_conversation_id=app_conv_id,
+            conversation_id=conv_id,
+            creds=creds_data,
+            obs_url=o_url
+        )
 
-    if result.get("error"):
-        yield f"data: {json.dumps({'error': result.get('message')})}\n\n"
-    else:
-            # ส่งข้อมูลคำตอบที่ได้จาก Service (ซึ่ง Service ควรส่งเป็นตัวอักษรหรือ chunks)
-        yield f"data: {json.dumps({'answer': result.get('data')})}\n\n"
+        if result.get("error"):
+            yield f"data: {json.dumps({'error': result.get('message')})}\n\n"
+        else:
+                # ส่งข้อมูลคำตอบที่ได้จาก Service (ซึ่ง Service ควรส่งเป็นตัวอักษรหรือ chunks)
+            yield f"data: {json.dumps({'answer': result.get('data')})}\n\n"
             
-    return Response(stream_with_context(result.get("data")), mimetype='text/event-stream')
+    return Response(
+        stream_with_context(generate(creds, app_conversation_id, query_text, app_key, conversation_id, obs_url)), 
+        mimetype='text/event-stream'
+    )
 
 # [POST] api/app/create-conversaation
 @app_bp.route('/create-conversation', methods=['POST'])
@@ -682,3 +786,36 @@ def create_conversation():
         "status": "success",
         "answer": result
     }), 200
+    
+    
+# [POST] api/app/list-pulished-workflows
+@app_bp.route('/list-published-workflows', methods=['POST'])
+def list_publish_workflows():
+    config = get_config()
+    req_data = request.get_json()
+
+    workspace_id = req_data.get('workspace_id')
+    page_number = req_data.get('page_number', 1)
+    page_size = req_data.get('page_size', 10)
+    status_filter = req_data.get('status_filter', 'Published')
+
+
+    if not workspace_id:
+        return jsonify({
+            "status": "error",
+            "message": "WorkspaceID are required"
+        }), 400
+
+    result = list_published_workflows_service(
+        creds=config['CREDENTIALS'],
+        version=config['APP_VERSION'],
+        host=config['HOST'],
+        workspace_id=workspace_id,
+        page_number=page_number,
+        page_size=page_size,
+        status_filter=status_filter
+    )
+
+    if result:
+        return jsonify({"status": "success", "message": result.get("message")}), 200
+    return jsonify({"error": "Update failed"}), 500

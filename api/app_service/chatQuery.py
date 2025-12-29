@@ -6,11 +6,12 @@ from volcengine.auth.SignParam import SignParam
 from volcengine.Credentials import Credentials
 from collections import OrderedDict
  
-def chat_query_service( app_key, query_text, app_conversation_id, conversation_id, creds, obs_url=None):
+def chat_query_service( app_key, version, query_text, app_conversation_id, conversation_id, creds, obs_url=None):
+    
     host = "agenza.osd.co.th" 
     url_path = '/api/bypass/app/chat/v2/chat_query'
     method = 'POST'
-    service = 'iam'
+    service = 'app'
     
     query_extends = {}
     if obs_url:
@@ -33,13 +34,17 @@ def chat_query_service( app_key, query_text, app_conversation_id, conversation_i
         ("AppConversationID" , str(app_conversation_id)),
         ("ConversationID", str(conversation_id)),
         ("QueryExtends", query_extends)
-        # ("responseMode", "ChatResponseModeBlock"),
     ])
 
     # 2. คำนวณ Hash ของ Body สำหรับ SignerV4
     json_body = json.dumps(data, separators=(',', ':'))
     body_hash = hashlib.sha256(json_body.encode('utf-8')).hexdigest()
+    
 
+    query = OrderedDict()
+    query['Version'] = version
+    
+    
     # 3. เตรียม SignerV4 parameters
     sign = SignerV4()
     param = SignParam() 
@@ -47,32 +52,26 @@ def chat_query_service( app_key, query_text, app_conversation_id, conversation_i
     param.method = method
     param.host = host
     param.body = body_hash
-    param.query = OrderedDict()
-    param.headers = {
-        "Content-Type": "application/json; charset=utf-8"
-    }
-    # 4. ลงลายเซ็นด้วย AK/SK
-    cren = Credentials(creds['AK'], creds['SK'], service, creds['REGION'])
-    signature_headers = sign.sign(param, cren)
+    param.query = query
 
-    if signature_headers is None:
-        print("Error: SignerV4 returned None. Please check your AK/SK and Region.")
-        return {"error": True, "message": "Signature generation failed"}
-    
-    
-    # 5. รวม Headers (รวมลายเซ็นเข้ากับ Content-Type)
+    header = OrderedDict()
+    header['Host'] = host
+    param.header_list = header
+
+    # 4. ลงลายเซ็น (Sign)
+    cren = Credentials(creds['AK'], creds['SK'], service, creds['REGION'])
+    print("cren", cren)
+    resulturl = sign.sign_url(param, cren)
+    print("resulturl", resulturl)
+    # 4. สร้าง URL และส่ง Request
+    url = f"https://{host}{url_path}?{resulturl}"
+    print("url", url)
+    # Headers สำหรับยิงจริง ต้องตรงกับที่ระบุใน header_list
     final_headers = {
-        "Accept": "application/json, text/event-stream"
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream'
     }
-    if hasattr(param, 'headers'):
-        final_headers.update(param.headers)
     
-    final_headers.update(signature_headers) # ตอนนี้จะไม่เกิด TypeError แล้ว
-    
-    use_https = True
-    
-    url = f"{'https' if use_https else 'http'}://{host}{url_path}"
-    print ("url", url)
     try:
         # ใช้ dynamic_headers ที่ได้รับมาจาก login_service
         resp = requests.post(url, headers=final_headers, json=data, timeout=120, stream=True)

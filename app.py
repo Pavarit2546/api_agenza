@@ -57,5 +57,5 @@ if __name__ == '__main__':
     except AttributeError:
         print("Please ensure 'import hashlib' is present in the relevant API files.")
 
-    print(f"Starting Flask App on port 3000. Host: {app.config['CREDENTIALS']['HOST']}")
-    app.run(host='0.0.0.0', debug=True, port=3000)
+    print(f"Starting Flask App on port 5000. Host: {app.config['CREDENTIALS']['HOST']}")
+    app.run(host='0.0.0.0', debug=True, port=5000)

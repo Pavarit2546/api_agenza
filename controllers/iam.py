@@ -6,6 +6,12 @@ from api.iam.listUser import list_user_service
 from api.iam.listAction import list_action_service
 from api.iam.deleteUser import delete_user_service
 from api.iam.getUser import get_user_service
+from api.iam.updateUser import update_user_service
+from api.iam.updateUserStatus import update_user_status_service
+from api.iam.ResetUserPassword import Reset_user_password_service
+from api.iam.listWorkspace import list_workspace_service
+
+
 
 
 iam_bp = Blueprint('iam', __name__)
@@ -79,7 +85,7 @@ def update_user():
     if not user_id:
         return jsonify({"error": "User ID is required"}), 400
 
-    result = create_user_service(
+    result = update_user_service(
         username=username,
         user_id=user_id,
         mobile=mobile,
@@ -89,7 +95,7 @@ def update_user():
         user_group_ids=user_group_ids,
         display_name=display_name,
         email=email,
-        rolename=rolename,
+        role_name=rolename,
         creds=config['CREDENTIALS'],
         version=config['IAM_VERSION'],
         host=config['HOST']
@@ -111,6 +117,82 @@ def update_user():
         "data": result
     }), 201
     
+    
+# [POST] api/iam/user/update-status   
+@iam_bp.route('/user/update-status', methods=['POST'])
+def update_user_status():
+    config = get_config()
+    req_data = request.get_json()
+
+    user_id = req_data.get('id')
+    status = req_data.get('status', '1')
+
+    if not user_id or not status:
+        return jsonify({"error": "User ID and Status is required"}), 400
+
+    result = update_user_status_service(
+        id=user_id,
+        status=status,
+        creds=config['CREDENTIALS'],
+        version=config['IAM_VERSION'],
+        host=config['HOST']
+    )
+
+    if not result:
+        return jsonify({"status": "error", "message": "No response from service"}), 500
+
+    if not result or (isinstance(result, dict) and result.get("error") is True):
+        http_code = result.get("status") if result and isinstance(result.get("status"), int) else 400
+        message = result.get("message") if result else "Internal Server Error"
+        return jsonify({
+            "status": http_code,
+            "message": message
+        }), http_code
+
+    return jsonify({
+        "status": "success",
+        "data": result
+    }), 201
+    
+    
+# [POST] api/iam/user/reset-password
+@iam_bp.route('/user/reset-password', methods=['POST'])
+def reset_user_password():
+    config = get_config()
+    req_data = request.get_json()
+
+    password = req_data.get('password')
+    tanant_id = req_data.get('tanant_id')
+    username = req_data.get('username')
+    
+    if not password or not tanant_id or not username:
+        return jsonify({"error": "Password, Tenant ID, and Username are required"}), 400
+    
+    result = Reset_user_password_service(
+        password=password,
+        tanant_id=tanant_id,
+        username=username,
+        creds=config['CREDENTIALS'],
+        version=config['IAM_VERSION'],
+        host=config['HOST']
+    )
+    
+    if not result:
+        return jsonify({"status": "error", "message": "No response from service"}), 500
+    
+    
+    if not result or (isinstance(result, dict) and result.get("error") is True):
+        http_code = result.get("status") if result and isinstance(result.get("status"), int) else 400
+        message = result.get("message") if result else "Internal Server Error"
+        return jsonify({
+            "status": "error",
+            "message": message
+        }), http_code
+
+    return jsonify({
+        "status": "success",
+        "data": result
+    }), 200
     
 @iam_bp.route('/user/list', methods=['POST'])
 def list_users():
@@ -153,14 +235,14 @@ def delete_user():
     account_id = req_data.get('id', '')
     name = req_data.get('name', '')
 
-    if not account_id and not name:
-        return jsonify({"status": "error", "message": "ID or Name is required"}), 400
+    # if not account_id or not name:
+    #     return jsonify({"status": "error", "message": "ID or Name is required"}), 400
     
     # ดักไว้ว่าห้ามลบ admin 
-    if account_id == 'd354uijg9jlc72tdg5n0' or name == 'dev':
-        return {
-            "status": 403, "message": "Cannot delete admin user"
-        }
+    if account_id == 'd54f6sj5efk17iahevipvc' or name == 'dev' or account_id == 'd55lcif9k09c72tvh48g' or name == 'osd_admin':
+        return jsonify({
+            "status": "error", "message": "Cannot delete admin user"
+        }), 403
     
     result = delete_user_service(
         creds=config['CREDENTIALS'],
@@ -252,5 +334,33 @@ def list_actions():
         "status": "success",
         "total": result.get("Total"),
         "actions": result.get("Actions")
+    }), 200
+    
+    
+# [POST] api/iam/workspace/list
+@iam_bp.route('/workspace/list', methods=['POST'])
+def list_workspaces():
+    config = get_config()
+
+    result = list_workspace_service(
+        creds=config['CREDENTIALS'],
+        version=config['IAM_VERSION'],
+        host=config['HOST'],
+    )
+
+    if not result:
+        return jsonify({"status": "error", "message": "No response from service"}), 500
+
+    if not result or (isinstance(result, dict) and result.get("error") is True):
+        http_code = result.get("status") if result and isinstance(result.get("status"), int) else 400
+        message = result.get("message") if result else "Internal Server Error"
+        return jsonify({
+            "status": http_code,
+            "message": message
+        }), http_code
+
+    return jsonify({
+        "status": "success",
+        "result": result.get("message")
     }), 200
     

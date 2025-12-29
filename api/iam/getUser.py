@@ -51,7 +51,7 @@ def get_user_service(creds, version, host, account_id, name):
     # 3. สร้าง URL สุดท้าย
     url = f"https://{host}{url_path}?{resulturl}"
     
-    print("Requesting CreateUser URL:", url)
+    print("Requesting getUser URL:", url)
     print("Body Data:", json_body)
 
     try:
@@ -60,7 +60,6 @@ def get_user_service(creds, version, host, account_id, name):
             'service': service,
             'X-Top-Dest-Service': service,
             'X-Top-Dest-Action': action,
-            'X-Top-Tenant-Id': 'd354uijg9jlc72tdg5n0'
         }
         
         resp = requests.request(method, url=url, headers=headers, data=json_body, verify=True)

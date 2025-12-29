@@ -6,23 +6,23 @@ from volcengine.auth.SignParam import SignParam
 from volcengine.Credentials import Credentials
 from collections import OrderedDict
 
-def delete_user_service(creds, version, host, account_id, name):
+def update_user_status_service(id, status, creds, version, host):
     method = "POST"
-    action = "DeleteUser"
+    action = "UpdateUserStatus"
     service = "iam"
     url_path = '/api/iam'
 
-    # 1. เตรียม Body Data
-    data = {
-        "ID": account_id, # not Creator field
-        "Name": name,
-        "Top": {
+    # 1. เตรียม Body Data (ใช้ค่าตามที่ส่งมาจาก Controller)
+    data = OrderedDict([
+        ("ID", str(id)),
+        ("Status", status),
+        ("Top", {
             "DestService": service,
             "DestAction": action
-        }
-    }
+        })
+    ])
 
-    json_body = json.dumps(data)
+    json_body = json.dumps(data, separators=(',', ':'))
     body_hash = hashlib.sha256(json_body.encode('utf-8')).hexdigest()
 
     # 2. ลงลายเซ็น V4
@@ -63,23 +63,18 @@ def delete_user_service(creds, version, host, account_id, name):
         }
         
         resp = requests.request(method, url=url, headers=headers, data=json_body, verify=True)
-        
-        # แสดงผลลัพธ์เพื่อ Debug
-
-        print(f"Response Status: {resp.status_code}")
-        print(f"Response Text: {resp.text}")
-        
         response_data = resp.json()
-
+        print("response_data:", response_data)
+    
         if resp.status_code != 200:
             error_info = response_data.get("ResponseMetadata", {}).get("Error", {})
             return {
                 "error": True,
                 "status": resp.status_code,
-                "message": error_info.get("Message", "Delete failed")
+                "message": error_info.get("Message", "Update failed")
             }
 
-        return {"error": False, "status": 200, "message": "User deleted successfully"}
+        return {"error": False, "status": 200, "data": response_data.get("Result")}
 
     except Exception as e:
         return {"error": True, "status": 500, "message": str(e)}

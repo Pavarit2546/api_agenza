@@ -6,16 +6,14 @@ from volcengine.auth.SignParam import SignParam
 from volcengine.Credentials import Credentials
 from collections import OrderedDict
 
-def delete_user_service(creds, version, host, account_id, name):
+def list_workspace_service(creds, version, host):
     method = "POST"
-    action = "DeleteUser"
+    action = "ListWorkspace"
     service = "iam"
     url_path = '/api/iam'
 
     # 1. เตรียม Body Data
     data = {
-        "ID": account_id, # not Creator field
-        "Name": name,
         "Top": {
             "DestService": service,
             "DestAction": action
@@ -51,7 +49,7 @@ def delete_user_service(creds, version, host, account_id, name):
     # 3. สร้าง URL สุดท้าย
     url = f"https://{host}{url_path}?{resulturl}"
     
-    print("Requesting CreateUser URL:", url)
+    print("Requesting ListWorkspace URL:", url)
     print("Body Data:", json_body)
 
     try:
@@ -65,7 +63,6 @@ def delete_user_service(creds, version, host, account_id, name):
         resp = requests.request(method, url=url, headers=headers, data=json_body, verify=True)
         
         # แสดงผลลัพธ์เพื่อ Debug
-
         print(f"Response Status: {resp.status_code}")
         print(f"Response Text: {resp.text}")
         
@@ -79,7 +76,7 @@ def delete_user_service(creds, version, host, account_id, name):
                 "message": error_info.get("Message", "Delete failed")
             }
 
-        return {"error": False, "status": 200, "message": "User deleted successfully"}
+        return {"error": False, "status": 200, "message": response_data.get("Result")}
 
     except Exception as e:
         return {"error": True, "status": 500, "message": str(e)}
